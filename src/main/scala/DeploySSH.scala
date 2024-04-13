@@ -25,6 +25,8 @@ object DeploySSH extends AutoPlugin {
 
     val deploySshExecBefore = TaskKey[Seq[(SSH) => Any]]("deploy-ssh-exec-before", "Execute before deploy")
     val deploySshExecAfter = TaskKey[Seq[(SSH) => Any]]("deploy-ssh-exec-after", "Execute after deploy")
+
+    val deployServersAction = TaskKey[Map[String, Seq[(SSH) => Any]]]("deploy-servers-action", "Servers custom action")
   }
 
   val autoImport = Keys
@@ -103,6 +105,7 @@ object DeploySSH extends AutoPlugin {
         else args
       }
       val configs = deployServers.value
+      val actions = deployServersAction.value
       if (configs.size > 0) log.info(s"Loaded ${configs.size} configs.")
       else log.warn(s"Loaded 0 configs. Please verify configuration.")
       log.debug(configs.mkString(", \r\n"))
@@ -112,11 +115,12 @@ object DeploySSH extends AutoPlugin {
         configs get serverName match {
           case Some(serverConfig) =>
             log.info(s"Found config=${serverConfig.host}. Start deployment process.")
+            val serverAction = actions get serverName
             try {
               deployToTheServer(serverConfig,
                 deployArtifacts.value,
                 deploySshExecBefore.value,
-                deploySshExecAfter.value, log)
+                deploySshExecAfter.value, serverAction, log)
               log.info(s"Deploy done for server=$serverName.")
             } catch {
               case error: SkipDeployException =>
@@ -137,12 +141,17 @@ object DeploySSH extends AutoPlugin {
     deployHomeConfigFiles := Seq(),
     deploySshExecBefore := Seq(),
     deploySshExecAfter := Seq(),
+    deployServersAction := Map(),
     deployConfigs := Seq(),
     deployArtifacts := Seq(),
     deploySshServersNames := Seq()
   )
 
-  private[this] def deployToTheServer( serverConfig: ServerConfig, artifacts: Seq[ArtifactSSH], execBefore: Seq[(SSH) => Any], execAfter: Seq[(SSH) => Any], log: Logger): Unit = {
+  private[this] def deployToTheServer( serverConfig: ServerConfig, artifacts: Seq[ArtifactSSH],
+                                       execBefore: Seq[(SSH) => Any],
+                                       execAfter: Seq[(SSH) => Any],
+                                       serverAction: Option[Seq[SSH => Any]],
+                                       log: Logger): Unit = {
     import java.io.File.separator
     import java.nio.file.Paths
 
@@ -173,11 +182,14 @@ object DeploySSH extends AutoPlugin {
     var counter = 0
     deployInfo.foreach { case (file, workDir, remoteDir) =>
       print(s"\rSend ${counter+=1;counter} of ${deployInfo.size}\r")
+      log.info(s"\rSend file=${file.getAbsolutePath} to remoteDir=$remoteDir\r")
       deployFile(ssh, sftp, file, workDir, remoteDir, log)
     }
     log.info(s"Sent ${deployInfo.size} file(s)")
     log.info("Exec after deploy")
     execAfter.foreach(_(ssh))
+    log.info("Exec custom action deploy")
+    serverAction.getOrElse(Seq.empty).foreach(_(ssh))
     sftp.close()
     ssh.close()
   }

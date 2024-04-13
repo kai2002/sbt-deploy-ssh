@@ -3,7 +3,7 @@ sbtPlugin := true
 name := "sbt-deploy-ssh"
 organization := "io.github.shmishleniy"
 organizationHomepage := Some(url("https://github.com/shmishleniy"))
-version := "0.1.5"
+version := "0.1.6"
 
 licenses += ("MIT", url("https://opensource.org/licenses/MIT"))
 
